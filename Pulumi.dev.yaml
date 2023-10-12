@@ -1,11 +1,13 @@
 config:
   aws:profile: dev
-  aws:region: us-east-1
-  pulumi.dev:igwName: MyIGW-dev
-  pulumi.dev:privateRouteTable: PrivateRouteTable-dev-
-  pulumi.dev:privateSubnet: PrivateSubnet-dev-
-  pulumi.dev:privateSubnetAssociation: PrivateSubnetAssociation-dev
-  pulumi.dev:publicRouteTable: PublicRouteTable-dev-
-  pulumi.dev:publicSubnet: PublicSubnet-dev-
-  pulumi.dev:publicSubnetAssociation: PublicSubnetAssociation-dev
-  pulumi.dev:vpcName: MyVPC-dev
+  aws:region: us-west-1
+  aws-vpc:igwName: MyIGW-dev
+  aws-vpc:privateRouteTable: PrivateRouteTable-dev-
+  aws-vpc:privateSubnet: PrivateSubnet-dev-
+  aws-vpc:privateSubnetAssociation: PrivateSubnetAssociation-dev
+  aws-vpc:publicRouteTable: PublicRouteTable-dev-
+  aws-vpc:publicSubnet: PublicSubnet-dev-
+  aws-vpc:publicSubnetAssociation: PublicSubnetAssociation-dev
+  aws-vpc:vpcCidrBlock: 10.0.0.0/16
+  aws-vpc:vpcName: MyVPC-dev
+  

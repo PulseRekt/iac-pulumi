@@ -8,6 +8,8 @@
         "@pulumi/aws": "^5.0.0",
         "@pulumi/awsx": "^1.0.0",
         "@pulumi/pulumi": "^3.0.0",
+        "@types/ip-subnet-calculator": "^1.1.1",
+        "ip-subnet-calculator": "^1.1.8",
         "subnet-cidr-calculator": "^1.0.12"
     }
 }

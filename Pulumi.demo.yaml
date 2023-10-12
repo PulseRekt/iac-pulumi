@@ -1,4 +1,12 @@
 config:
-
   aws:profile: demo
   aws:region: us-east-1
+  aws-vpc:igwName: MyIGW-demo
+  aws-vpc:privateRouteTable: PrivateRouteTable-demo-
+  aws-vpc:privateSubnet: PrivateSubnet-demo-
+  aws-vpc:privateSubnetAssociation: PrivateSubnetAssociation-demo
+  aws-vpc:publicRouteTable: PublicRouteTable-demo-
+  aws-vpc:publicSubnet: PublicSubnet-demo-
+  aws-vpc:publicSubnetAssociation: PublicSubnetAssociation-demo
+  aws-vpc:vpcCidrBlock: 10.1.0.0/16
+  aws-vpc:vpcName: MyVPC-demo

@@ -1,7 +1,8 @@
 import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 import * as awsx from "@pulumi/awsx";
-const config = new pulumi.Config("pulumi.dev");
+import * as subnetCalculator from 'ip-subnet-calculator';
+const config = new pulumi.Config();
 
 const vpcName = config.require("vpcName");
 const igwName = config.require("igwName");
@@ -12,8 +13,28 @@ const publicSubnetName = config.require("publicSubnet");
 const publicAssociationName = config.require("publicSubnetAssociation");
 const privateAssociationName = config.require("privateSubnetAssociation");
 
+const vpcCidrBlock = '10.0.0.0/16';
+const subnetMask = '255.255.240.0';
 
-const vpcCidrBlock = "11.0.0.0/16";
+const numberOfSubnets = 6;
+
+
+// const calculateValidSubnets = (
+//   numberOfSubnets: number,
+//   vpcCidrBlock: string
+// ): string[] => {
+//   const subnetPrefixLength = subnetCalculator.calculateCIDRPrefix(numberOfSubnets,subnetMask);
+
+//   const vpcCidrParts = vpcCidrBlock.split(".");
+//   const subnetCidrBlocks: string[] = [];
+//   for (let i = 0; i < numberOfSubnets; i++) {
+//     const subnet = `${vpcCidrParts[0]}.${vpcCidrParts[1]}.${i * subnetPrefixLength}.0/${subnetPrefixLength}`;
+//     subnetCidrBlocks.push(subnet);
+//   }
+
+//   return subnetCidrBlocks;
+// };
+// const subnets = calculateValidSubnets(numberOfSubnets, vpcCidrBlock);
 
 
 const publicSubnetCidrBlocks: string[] = [];
