@@ -18,23 +18,36 @@ const subnetMask = '255.255.240.0';
 
 const numberOfSubnets = 6;
 
-
-// const calculateValidSubnets = (
-//   numberOfSubnets: number,
-//   vpcCidrBlock: string
-// ): string[] => {
+// export const calculateValidSubnets = (
+//   vpcCidrBlock: string,
+//   numberOfSubnets: number
+// ): { publicSubnets: string[]; privateSubnets: string[] } => {
+//   // Calculate the subnet prefix length.
 //   const subnetPrefixLength = subnetCalculator.calculateCIDRPrefix(numberOfSubnets,subnetMask);
+//   console.log(subnetPrefixLength);
 
-//   const vpcCidrParts = vpcCidrBlock.split(".");
-//   const subnetCidrBlocks: string[] = [];
-//   for (let i = 0; i < numberOfSubnets; i++) {
-//     const subnet = `${vpcCidrParts[0]}.${vpcCidrParts[1]}.${i * subnetPrefixLength}.0/${subnetPrefixLength}`;
-//     subnetCidrBlocks.push(subnet);
+//   // Calculate the number of public and private subnets.
+//   const numberOfPublicSubnets = Math.floor(numberOfSubnets / 2);
+//   const numberOfPrivateSubnets = numberOfSubnets - numberOfPublicSubnets;
+
+//   // Calculate the CIDR block for each public subnet.
+//   const publicSubnets: string[] = [];
+//   for (let i = 0; i < numberOfPublicSubnets; i++) {
+//     const vpcCidrParts = vpcCidrBlock.split(".");
+//     const subnetCIDRBlock = `${vpcCidrParts[0]}.${vpcCidrParts[1]}.${parseInt(i * subnetPrefixLength, 10)}.0/${subnetPrefixLength}`;
+//     publicSubnets.push(subnetCIDRBlock);
 //   }
 
-//   return subnetCidrBlocks;
+//   // Calculate the CIDR block for each private subnet.
+//   const privateSubnets: string[] = [];
+//   for (let i = numberOfPublicSubnets; i < numberOfSubnets; i++) {
+//     const vpcCidrParts = vpcCidrBlock.split(".");
+//     const subnetCIDRBlock = `${vpcCidrParts[0]}.${vpcCidrParts[1]}.${(i * subnetPrefixLength).toString()}.0/${subnetPrefixLength}`;
+//     privateSubnets.push(subnetCIDRBlock);
+//   }
+
+//   return { publicSubnets, privateSubnets };
 // };
-// const subnets = calculateValidSubnets(numberOfSubnets, vpcCidrBlock);
 
 
 const publicSubnetCidrBlocks: string[] = [];
