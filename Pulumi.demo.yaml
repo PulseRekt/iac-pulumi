@@ -10,3 +10,7 @@ config:
   aws-vpc:publicSubnetAssociation: PublicSubnetAssociation-demo
   aws-vpc:vpcCidrBlock: 10.1.0.0/16
   aws-vpc:vpcName: MyVPC-demo
+  aws-vpc:keyPair: predator
+  aws-vpc:instanceType: t2.micro
+  aws-vpc:volumeSize: 25
+  aws-vpc:volumeType: gp2
