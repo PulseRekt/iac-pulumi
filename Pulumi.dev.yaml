@@ -15,5 +15,8 @@ config:
   aws-vpc:volumeSize: 25
   aws-vpc:volumeType: gp2
   aws-vpc:allIp: 0.0.0.0/0
+  aws-vpc:users: 311572683597
+  aws-vpc:myIp: 73.142.182.118
+  aws-vpc:noSubnets: 6
 
   
