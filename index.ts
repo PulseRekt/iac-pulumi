@@ -19,24 +19,22 @@ const baseVpcCidrBlock = config.require("vpcCidrBlock")
 const instanceType = config.require("instanceType");
 const volumeSize:number = config.requireNumber("volumeSize");
 const volumeType = config.require("volumeType");
+const allIp = config.require("allIp");
+const users = config.require("users");
+const myIp = config.require("myIp");
+const noSubnets = config.requireNumber("noSubnets");
 const publicSubnets:aws.ec2.Subnet[] = []; 
 
 
 const vpcCidrBlock = baseVpcCidrBlock;
 const subnetMask = '255.255.240.0';
 
-const myIpAddress = "73.142.182.118"; 
+const myIpAddress = myIp; 
 
 
-const numberOfSubnets = 6;
+const numberOfSubnets = noSubnets;
 
-// const complete_availabilityZones = pulumi.output(aws.getAvailabilityZones({
-//   state: "available"
-// }));
 
-// const availabilityZones = complete_availabilityZones.apply(az => az.names.slice(0, 3));
-
-// Function to calculate the new subnet mask
 function calculateNewSubnetMask(vpcMask: number, numSubnets: number): number {
   const bitsNeeded = Math.ceil(Math.log2(numSubnets));
   const newSubnetMask = vpcMask + bitsNeeded;
@@ -73,19 +71,8 @@ const numPrivateSubnets = numberOfSubnets / 2;
 const subnetCidrBlocks = generateSubnetCidrBlocks(vpcCidrBlock, numberOfSubnets);
 
 
-// Separate the generated CIDR blocks into public and private subnets
 const publicSubnetCidrBlocks = subnetCidrBlocks.slice(0, numPublicSubnets);
-const privateSubnetCidrBlocks = subnetCidrBlocks.slice(numPrivateSubnets, numberOfSubnets);// Assuming 3 public and 3 private subnets
-
-// const vpcCidrParts = vpcCidrBlock.split(".");
-// const vpcNetwork = vpcCidrParts[0] + "." + vpcCidrParts[1];
-
-// for (let i = 1; i <= 3; i++) {
-//   const publicSubnetCIDR = vpcNetwork+`.${i}.0`+"/24";
-//   const privateSubnetCIDR = vpcNetwork+`.${i+3}.0`+"/24";;
-//   publicSubnetCidrBlocks.push(publicSubnetCIDR);
-//   privateSubnetCidrBlocks.push(privateSubnetCIDR);
-// }
+const privateSubnetCidrBlocks = subnetCidrBlocks.slice(numPrivateSubnets, numberOfSubnets);
 
 
 const vpc = new aws.ec2.Vpc(vpcName, {
@@ -112,7 +99,7 @@ aws.getAvailabilityZones({ state: "available" }).then((availabilityZones) => {
       },
       routes:[
         {
-          cidrBlock:"0.0.0.0/0",
+          cidrBlock:allIp,
           gatewayId:internetGateway.id
 
         }
@@ -136,7 +123,6 @@ aws.getAvailabilityZones({ state: "available" }).then((availabilityZones) => {
       publicSubnets.push(publicSubnet);
 
   });
-  // console.log(publicSubnets)
 
 
   const privateRouteTable = new aws.ec2.RouteTable(privateRouteTableName, {
@@ -164,7 +150,7 @@ aws.getAvailabilityZones({ state: "available" }).then((availabilityZones) => {
 
   
 
-const ec2SecurityGroup = new aws.ec2.SecurityGroup("myEC2SecurityGroup", {
+const ec2SecurityGroup = new aws.ec2.SecurityGroup("applicationSecurityGroup", {
   description: "My EC2 Instance Security Group",
   vpcId:vpc.id,
   ingress: [
@@ -178,25 +164,25 @@ const ec2SecurityGroup = new aws.ec2.SecurityGroup("myEC2SecurityGroup", {
           protocol: "tcp",
           fromPort: 80,  
           toPort: 80,
-          cidrBlocks: ["0.0.0.0/0"],  
+          cidrBlocks: [allIp],  
       },
       {
           protocol: "tcp",
           fromPort: 443,  
           toPort: 443,
-          cidrBlocks: ["0.0.0.0/0"], 
+          cidrBlocks: [allIp], 
       },
       {
         protocol: "tcp",
         fromPort: 8080,
         toPort : 8080,
-        cidrBlocks:["0.0.0.0/0"]
+        cidrBlocks:[allIp]
       }
   ],
 });
 
 const ec2Ami = aws.ec2.getAmi({
-executableUsers:["311572683597"],
+executableUsers:[users],
 mostRecent:true,
 filters:[
   {
@@ -212,21 +198,19 @@ subnetId:publicSubnets[0].id,
 vpcSecurityGroupIds:[ec2SecurityGroup.id],
 instanceType:instanceType,
 keyName: keyPairName,
+disableApiTermination: false,
 tags:{
   Name:"MyEc2"
 },
-ebsBlockDevices:[
-  {
-    deviceName:"/dev/sda1",
-    volumeSize: volumeSize,
-    volumeType: volumeType
-  }
-],
-disableApiTermination:false
+rootBlockDevice:{
+  deleteOnTermination:true,
+  volumeSize:volumeSize,
+  volumeType:volumeType
+},
+
+
 });
-console.log(ec2Instance);
 });
 
 export const vpcId = vpc.id;
 export const gateWayId = internetGateway.id;
-// export const ec2Id = ec2Instance.id;
