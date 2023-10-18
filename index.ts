@@ -4,6 +4,8 @@ import * as awsx from "@pulumi/awsx";
 import * as subnetCalculator from 'ip-subnet-calculator';
 const config = new pulumi.Config();
 
+
+
 const vpcName = config.require("vpcName");
 const igwName = config.require("igwName");
 const privateRouteTableName = config.require("privateRouteTable");
@@ -12,55 +14,65 @@ const privateSubnetName = config.require("privateSubnet");
 const publicSubnetName = config.require("publicSubnet");
 const publicAssociationName = config.require("publicSubnetAssociation");
 const privateAssociationName = config.require("privateSubnetAssociation");
+const keyPairName = config.require("keyPair");
+const baseVpcCidrBlock = config.require("vpcCidrBlock")
+const instanceType = config.require("instanceType");
+const volumeSize:number = config.requireNumber("volumeSize");
+const volumeType = config.require("volumeType");
+const allIp = config.require("allIp");
+const users = config.require("users");
+const myIp = config.require("myIp");
+const noSubnets = config.requireNumber("noSubnets");
+const publicSubnets:aws.ec2.Subnet[] = []; 
 
-const vpcCidrBlock = '10.0.0.0/16';
+
+const vpcCidrBlock = baseVpcCidrBlock;
 const subnetMask = '255.255.240.0';
 
-const numberOfSubnets = 6;
-
-// export const calculateValidSubnets = (
-//   vpcCidrBlock: string,
-//   numberOfSubnets: number
-// ): { publicSubnets: string[]; privateSubnets: string[] } => {
-//   // Calculate the subnet prefix length.
-//   const subnetPrefixLength = subnetCalculator.calculateCIDRPrefix(numberOfSubnets,subnetMask);
-//   console.log(subnetPrefixLength);
-
-//   // Calculate the number of public and private subnets.
-//   const numberOfPublicSubnets = Math.floor(numberOfSubnets / 2);
-//   const numberOfPrivateSubnets = numberOfSubnets - numberOfPublicSubnets;
-
-//   // Calculate the CIDR block for each public subnet.
-//   const publicSubnets: string[] = [];
-//   for (let i = 0; i < numberOfPublicSubnets; i++) {
-//     const vpcCidrParts = vpcCidrBlock.split(".");
-//     const subnetCIDRBlock = `${vpcCidrParts[0]}.${vpcCidrParts[1]}.${parseInt(i * subnetPrefixLength, 10)}.0/${subnetPrefixLength}`;
-//     publicSubnets.push(subnetCIDRBlock);
-//   }
-
-//   // Calculate the CIDR block for each private subnet.
-//   const privateSubnets: string[] = [];
-//   for (let i = numberOfPublicSubnets; i < numberOfSubnets; i++) {
-//     const vpcCidrParts = vpcCidrBlock.split(".");
-//     const subnetCIDRBlock = `${vpcCidrParts[0]}.${vpcCidrParts[1]}.${(i * subnetPrefixLength).toString()}.0/${subnetPrefixLength}`;
-//     privateSubnets.push(subnetCIDRBlock);
-//   }
-
-//   return { publicSubnets, privateSubnets };
-// };
+const myIpAddress = myIp; 
 
 
-const publicSubnetCidrBlocks: string[] = [];
-const privateSubnetCidrBlocks: string[] = [];
-const vpcCidrParts = vpcCidrBlock.split(".");
-const vpcNetwork = vpcCidrParts[0] + "." + vpcCidrParts[1];
+const numberOfSubnets = noSubnets;
 
-for (let i = 1; i <= 3; i++) {
-  const publicSubnetCIDR = vpcNetwork+`.${i}.0`+"/24";
-  const privateSubnetCIDR = vpcNetwork+`.${i+3}.0`+"/24";;
-  publicSubnetCidrBlocks.push(publicSubnetCIDR);
-  privateSubnetCidrBlocks.push(privateSubnetCIDR);
+
+function calculateNewSubnetMask(vpcMask: number, numSubnets: number): number {
+  const bitsNeeded = Math.ceil(Math.log2(numSubnets));
+  const newSubnetMask = vpcMask + bitsNeeded;
+  return newSubnetMask;
 }
+
+function ipToInt(ip: string): number {
+  const octets = ip.split('.').map(Number);
+  return (octets[0] << 24) + (octets[1] << 16) + (octets[2] << 8) + octets[3];
+}
+
+function intToIp(int: number): string {
+  return [(int >>> 24) & 255, (int >>> 16) & 255, (int >>> 8) & 255, int & 255].join('.');
+}
+
+function generateSubnetCidrBlocks(baseCidrBlock: string, numSubnets: number): string[] {
+  const [baseIp, vpcMask] = baseCidrBlock.split('/');
+  const newSubnetMask = calculateNewSubnetMask(Number(vpcMask), numSubnets);
+  const subnetSize = Math.pow(2, 32 - newSubnetMask);
+  const subnetCidrBlocks = [];
+  for (let i = 0; i < numSubnets; i++) {
+      const subnetIpInt = ipToInt(baseIp) + i * subnetSize;
+      const subnetIp = intToIp(subnetIpInt);
+      subnetCidrBlocks.push(`${subnetIp}/${newSubnetMask}`);
+  }
+  return subnetCidrBlocks;
+}
+
+
+
+const numPublicSubnets = numberOfSubnets / 2;
+const numPrivateSubnets = numberOfSubnets / 2;
+
+const subnetCidrBlocks = generateSubnetCidrBlocks(vpcCidrBlock, numberOfSubnets);
+
+
+const publicSubnetCidrBlocks = subnetCidrBlocks.slice(0, numPublicSubnets);
+const privateSubnetCidrBlocks = subnetCidrBlocks.slice(numPrivateSubnets, numberOfSubnets);
 
 
 const vpc = new aws.ec2.Vpc(vpcName, {
@@ -87,29 +99,31 @@ aws.getAvailabilityZones({ state: "available" }).then((availabilityZones) => {
       },
       routes:[
         {
-          cidrBlock:"0.0.0.0/0",
+          cidrBlock:allIp,
           gatewayId:internetGateway.id
 
         }
       ]
   });
 
-  availabilityZones.names.slice(0, 3).forEach((az, index) => {
-      const publicSubnet = new aws.ec2.Subnet(publicSubnetName+`${index}`, {
-          vpcId: vpc.id,
-          cidrBlock: publicSubnetCidrBlocks[index],
-          availabilityZone: az,
-          mapPublicIpOnLaunch: true,
-          tags: {
-              Name: publicSubnetName+`${index}`
-          }
-      });
-
+    availabilityZones.names.slice(0, 3).forEach((az, index) => {
+        const publicSubnet = new aws.ec2.Subnet(publicSubnetName+`${index}`, {
+            vpcId: vpc.id,
+            cidrBlock: publicSubnetCidrBlocks[index],
+            availabilityZone: az,
+            mapPublicIpOnLaunch: true,
+            tags: {
+                Name: publicSubnetName+`${index}`
+            }
+        });
       const subnetAssociation = new aws.ec2.RouteTableAssociation(publicAssociationName+`${index}`, {
           subnetId: publicSubnet.id,
           routeTableId: publicRouteTable.id,
       });
+      publicSubnets.push(publicSubnet);
+
   });
+
 
   const privateRouteTable = new aws.ec2.RouteTable(privateRouteTableName, {
     vpcId: vpc.id,
@@ -117,6 +131,7 @@ aws.getAvailabilityZones({ state: "available" }).then((availabilityZones) => {
         Name: privateRouteTableName
     }
 });
+
 
   availabilityZones.names.slice(0, 3).forEach((az, index) => {
       const privateSubnet = new aws.ec2.Subnet(privateSubnetName+`${index}`, {
@@ -133,12 +148,69 @@ aws.getAvailabilityZones({ state: "available" }).then((availabilityZones) => {
     });
   });
 
+  
 
+const ec2SecurityGroup = new aws.ec2.SecurityGroup("applicationSecurityGroup", {
+  description: "My EC2 Instance Security Group",
+  vpcId:vpc.id,
+  ingress: [
+      {
+          protocol: "tcp",
+          fromPort: 22, 
+          toPort: 22,
+          cidrBlocks: [myIpAddress + "/32"],  
+      },
+      {
+          protocol: "tcp",
+          fromPort: 80,  
+          toPort: 80,
+          cidrBlocks: [allIp],  
+      },
+      {
+          protocol: "tcp",
+          fromPort: 443,  
+          toPort: 443,
+          cidrBlocks: [allIp], 
+      },
+      {
+        protocol: "tcp",
+        fromPort: 8080,
+        toPort : 8080,
+        cidrBlocks:[allIp]
+      }
+  ],
 });
 
+const ec2Ami = aws.ec2.getAmi({
+executableUsers:[users],
+mostRecent:true,
+filters:[
+  {
+    name:"name",
+    values:["my-ami_*"],
+  }
+]
+})
+
+const ec2Instance = new aws.ec2.Instance("ec2",{
+ami:ec2Ami.then(ec2Ami=>ec2Ami.id),
+subnetId:publicSubnets[0].id,
+vpcSecurityGroupIds:[ec2SecurityGroup.id],
+instanceType:instanceType,
+keyName: keyPairName,
+disableApiTermination: false,
+tags:{
+  Name:"MyEc2"
+},
+rootBlockDevice:{
+  deleteOnTermination:true,
+  volumeSize:volumeSize,
+  volumeType:volumeType
+},
 
 
-  export const vpcId = vpc.id;
-  export const gateWayId = internetGateway.id;
+});
+});
 
-  
+export const vpcId = vpc.id;
+export const gateWayId = internetGateway.id;
