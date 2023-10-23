@@ -24,6 +24,8 @@ const users = config.require("users");
 const myIp = config.require("myIp");
 const noSubnets = config.requireNumber("noSubnets");
 const publicSubnets:aws.ec2.Subnet[] = []; 
+const privateSubnets:aws.ec2.Subnet[] = []; 
+
 
 
 const vpcCidrBlock = baseVpcCidrBlock;
@@ -146,7 +148,13 @@ aws.getAvailabilityZones({ state: "available" }).then((availabilityZones) => {
         subnetId: privateSubnet.id,
         routeTableId: privateRouteTable.id,
     });
+    privateSubnets.push(privateSubnet);
   });
+
+  const privateSubnetGroup = new aws.rds.SubnetGroup("my-rds-private-subnet-group", {
+    subnetIds: privateSubnets.map(subnet => subnet.id),
+  });
+
 
   
 
@@ -210,6 +218,37 @@ rootBlockDevice:{
 
 
 });
+
+// const 
+
+const rdsParameterGroup = new aws.rds.ParameterGroup("my-rds-parameter-group", {
+  family: "mysql8.0", // Specify the RDS engine family (e.g., "mysql8.0")
+  description: "My RDS Parameter Group", // Provide a description (optional)
+
+});
+
+let vpcIdVariable =''; // Declare a variable to store the VPC ID
+
+
+vpc.id.apply(id=>{
+  vpcIdVariable=id
+});
+
+
+const rdsInstance = new aws.rds.Instance("my-rds", {
+  allocatedStorage: 20,
+  dbName: "cloud",
+  engine: "mysql",
+  engineVersion: "8.0.33", // Specify the MySQL engine version
+  instanceClass: "db.t3.micro",
+  parameterGroupName: rdsParameterGroup.name,
+  username: "admin",
+  password: "Thenothing1!", // Replace with your own password
+  skipFinalSnapshot: true,
+  vpcSecurityGroupIds:[vpcIdVariable],
+  dbSubnetGroupName:privateSubnetGroup.name // Set to true to skip creating a final snapshot
+});
+
 });
 
 export const vpcId = vpc.id;
