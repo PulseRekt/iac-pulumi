@@ -28,6 +28,8 @@ const privateSubnets:aws.ec2.Subnet[] = [];
 
 
 
+
+
 const vpcCidrBlock = baseVpcCidrBlock;
 const subnetMask = '255.255.240.0';
 
@@ -187,6 +189,11 @@ const ec2SecurityGroup = new aws.ec2.SecurityGroup("applicationSecurityGroup", {
         cidrBlocks:[allIp]
       }
   ],
+  egress:[
+    {
+      
+    }
+  ]
 });
 
 const ec2Ami = aws.ec2.getAmi({
@@ -200,26 +207,25 @@ filters:[
 ]
 })
 
-const ec2Instance = new aws.ec2.Instance("ec2",{
-ami:ec2Ami.then(ec2Ami=>ec2Ami.id),
-subnetId:publicSubnets[0].id,
-vpcSecurityGroupIds:[ec2SecurityGroup.id],
-instanceType:instanceType,
-keyName: keyPairName,
-disableApiTermination: false,
-tags:{
-  Name:"MyEc2"
-},
-rootBlockDevice:{
-  deleteOnTermination:true,
-  volumeSize:volumeSize,
-  volumeType:volumeType
-},
 
-
-});
 
 // const 
+
+
+const dbSecurityGroup = new aws.ec2.SecurityGroup("databaseSecurityGroup", {
+  description: "My EC2 Instance Security Group",
+  vpcId:vpc.id,
+});
+
+const ingressRule = new aws.ec2.SecurityGroupRule("database-ingress-rule", {
+  type: "ingress",
+  fromPort: 3306, 
+  toPort: 3306, 
+  protocol: "tcp",
+  sourceSecurityGroupId: ec2SecurityGroup.id, 
+  securityGroupId: dbSecurityGroup.id,
+});
+
 
 const rdsParameterGroup = new aws.rds.ParameterGroup("my-rds-parameter-group", {
   family: "mysql8.0", // Specify the RDS engine family (e.g., "mysql8.0")
@@ -239,17 +245,65 @@ const rdsInstance = new aws.rds.Instance("my-rds", {
   allocatedStorage: 20,
   dbName: "cloud",
   engine: "mysql",
-  engineVersion: "8.0.33", // Specify the MySQL engine version
+  engineVersion: "8.0.33", 
   instanceClass: "db.t3.micro",
   parameterGroupName: rdsParameterGroup.name,
-  username: "admin",
-  password: "Thenothing1!", // Replace with your own password
+  username: "root",
+  password: "Thenothing1!", 
   skipFinalSnapshot: true,
-  vpcSecurityGroupIds:[vpcIdVariable],
-  dbSubnetGroupName:privateSubnetGroup.name // Set to true to skip creating a final snapshot
+  vpcSecurityGroupIds:[dbSecurityGroup.id],
+  dbSubnetGroupName:privateSubnetGroup.name
 });
 
-});
+
+let address =''
+const rdsInstanceEndpoint = rdsInstance.endpoint;
+// rdsInstanceEndpoint.
+rdsInstanceEndpoint.apply(endpoint=>{
+  // console.log(endpoint);
+  // address=endpoint
+  console.log(endpoint);
+  address = endpoint.split(":")[0];
+console.log("RDS Hostname without Port: " + address);
+})
+
+
+// console.log(rdsHost);
+
+
+const userDataScript = `
+#!/bin/bash
+cat << EOF > ./web-app/.env
+DB_HOST= ${address}
+DB_PORT=3306
+DB_DATABASE=cloud
+DB_USERNAME=root
+DB_PASSWORD=Thenothing1!
+FILE_PATH=./opt/users.csv
+EOF
+`;
+
+const ec2Instance = new aws.ec2.Instance("ec2",{
+  ami:ec2Ami.then(ec2Ami=>ec2Ami.id),
+  subnetId:publicSubnets[0].id,
+  vpcSecurityGroupIds:[ec2SecurityGroup.id],
+  instanceType:instanceType,
+  keyName: keyPairName,
+  disableApiTermination: false,
+  userData:userDataScript,
+  tags:{
+    Name:"MyEc2"
+  },
+  rootBlockDevice:{
+    deleteOnTermination:true,
+    volumeSize:volumeSize,
+    volumeType:volumeType
+  },
+  
+  
+  });
+
+},);
 
 export const vpcId = vpc.id;
 export const gateWayId = internetGateway.id;
