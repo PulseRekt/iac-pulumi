@@ -191,7 +191,10 @@ const ec2SecurityGroup = new aws.ec2.SecurityGroup("applicationSecurityGroup", {
   ],
   egress:[
     {
-      
+      protocol:"tcp",
+      fromPort: 3306,
+      toPort:3306,
+      cidrBlocks:[allIp]
     }
   ]
 });
@@ -255,33 +258,36 @@ const rdsInstance = new aws.rds.Instance("my-rds", {
   dbSubnetGroupName:privateSubnetGroup.name
 });
 
+const db_address = rdsInstance.address;
 
-let address =''
-const rdsInstanceEndpoint = rdsInstance.endpoint;
-// rdsInstanceEndpoint.
-rdsInstanceEndpoint.apply(endpoint=>{
-  // console.log(endpoint);
-  // address=endpoint
-  console.log(endpoint);
-  address = endpoint.split(":")[0];
-console.log("RDS Hostname without Port: " + address);
-})
+module.exports ={
+db_address
+}
+
+// let address =''
+// const rdsInstanceEndpoint = rdsInstance.endpoint;
+// // rdsInstanceEndpoint.
+// rdsInstanceEndpoint.apply(endpoint=>{
+//   console.log(endpoint);
+//   address = endpoint.split(":")[0];
+// console.log("RDS Hostname without Port: " + address);
+// })
 
 
-// console.log(rdsHost);
+// // console.log(rdsHost);
 
 
-const userDataScript = `
-#!/bin/bash
-cat << EOF > ./web-app/.env
-DB_HOST= ${address}
-DB_PORT=3306
-DB_DATABASE=cloud
-DB_USERNAME=root
-DB_PASSWORD=Thenothing1!
-FILE_PATH=./opt/users.csv
-EOF
-`;
+// const userDataScript = `
+// #!/bin/bash
+// cat << EOF > ./web-app/.env
+// DB_HOST= ${address}
+// DB_PORT=3306
+// DB_DATABASE=cloud
+// DB_USERNAME=root
+// DB_PASSWORD=Thenothing1!
+// FILE_PATH=./opt/users.csv
+// EOF
+// `;
 
 const ec2Instance = new aws.ec2.Instance("ec2",{
   ami:ec2Ami.then(ec2Ami=>ec2Ami.id),
@@ -290,7 +296,16 @@ const ec2Instance = new aws.ec2.Instance("ec2",{
   instanceType:instanceType,
   keyName: keyPairName,
   disableApiTermination: false,
-  userData:userDataScript,
+  userData:pulumi.interpolate`#!/bin/bash
+  cat << EOF > /opt/web-app/.env
+  DB_HOST= ${rdsInstance.address}
+  DB_PORT=3306
+  DB_DATABASE=cloud
+  DB_USERNAME=root
+  DB_PASSWORD=Thenothing1!
+  FILE_PATH=./opt/users.csv
+  EOF
+  `,
   tags:{
     Name:"MyEc2"
   },
@@ -299,11 +314,11 @@ const ec2Instance = new aws.ec2.Instance("ec2",{
     volumeSize:volumeSize,
     volumeType:volumeType
   },
-  
-  
+  },{
+    dependsOn:[rdsInstance]
   });
 
-},);
+});
 
 export const vpcId = vpc.id;
 export const gateWayId = internetGateway.id;
