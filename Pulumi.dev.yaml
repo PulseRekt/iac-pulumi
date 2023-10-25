@@ -18,5 +18,3 @@ config:
   aws-vpc:users: 311572683597
   aws-vpc:myIp: 73.142.182.118
   aws-vpc:noSubnets: 6
-
-  

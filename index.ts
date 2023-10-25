@@ -264,30 +264,7 @@ module.exports ={
 db_address
 }
 
-// let address =''
-// const rdsInstanceEndpoint = rdsInstance.endpoint;
-// // rdsInstanceEndpoint.
-// rdsInstanceEndpoint.apply(endpoint=>{
-//   console.log(endpoint);
-//   address = endpoint.split(":")[0];
-// console.log("RDS Hostname without Port: " + address);
-// })
 
-
-// // console.log(rdsHost);
-
-
-// const userDataScript = `
-// #!/bin/bash
-// cat << EOF > ./web-app/.env
-// DB_HOST= ${address}
-// DB_PORT=3306
-// DB_DATABASE=cloud
-// DB_USERNAME=root
-// DB_PASSWORD=Thenothing1!
-// FILE_PATH=./opt/users.csv
-// EOF
-// `;
 
 const ec2Instance = new aws.ec2.Instance("ec2",{
   ami:ec2Ami.then(ec2Ami=>ec2Ami.id),
@@ -299,10 +276,10 @@ const ec2Instance = new aws.ec2.Instance("ec2",{
   userData:pulumi.interpolate`#!/bin/bash
   cat << EOF > /opt/web-app/.env
   DB_HOST= ${rdsInstance.address}
-  DB_PORT=3306
-  DB_DATABASE=cloud
-  DB_USERNAME=root
-  DB_PASSWORD=Thenothing1!
+  DB_PORT=${rdsInstance.port}
+  DB_DATABASE=${rdsInstance.dbName}
+  DB_USERNAME=${rdsInstance.username}
+  DB_PASSWORD=${rdsInstance.password}
   FILE_PATH=./opt/users.csv
   EOF
   `,
