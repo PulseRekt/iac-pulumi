@@ -25,9 +25,11 @@ const myIp = config.require("myIp");
 const noSubnets = config.requireNumber("noSubnets");
 const publicSubnets:aws.ec2.Subnet[] = []; 
 const privateSubnets:aws.ec2.Subnet[] = []; 
-
-
-
+const dbName = config.require('dbName');
+const dbPassword = config.require("dbPassword");
+const dbPort = config.require('dbPort');
+const dbUsername = config.require('dbUsername');
+const rdsInstanceType = config.require('rdsInstanceType');
 
 
 const vpcCidrBlock = baseVpcCidrBlock;
@@ -191,9 +193,9 @@ const ec2SecurityGroup = new aws.ec2.SecurityGroup("applicationSecurityGroup", {
   ],
   egress:[
     {
-      protocol:"tcp",
-      fromPort: 3306,
-      toPort:3306,
+      protocol: "-1",
+      fromPort: 0,
+      toPort:0,
       cidrBlocks:[allIp]
     }
   ]
@@ -218,6 +220,10 @@ filters:[
 const dbSecurityGroup = new aws.ec2.SecurityGroup("databaseSecurityGroup", {
   description: "My EC2 Instance Security Group",
   vpcId:vpc.id,
+  tags:
+  {
+    Name:'databaseSecurityGroup'
+  }
 });
 
 const ingressRule = new aws.ec2.SecurityGroupRule("database-ingress-rule", {
@@ -231,8 +237,8 @@ const ingressRule = new aws.ec2.SecurityGroupRule("database-ingress-rule", {
 
 
 const rdsParameterGroup = new aws.rds.ParameterGroup("my-rds-parameter-group", {
-  family: "mysql8.0", // Specify the RDS engine family (e.g., "mysql8.0")
-  description: "My RDS Parameter Group", // Provide a description (optional)
+  family: "mysql8.0", 
+  description: "My RDS Parameter Group", 
 
 });
 
@@ -246,16 +252,16 @@ vpc.id.apply(id=>{
 
 const rdsInstance = new aws.rds.Instance("my-rds", {
   allocatedStorage: 20,
-  dbName: "cloud",
+  dbName: dbName,
   engine: "mysql",
   engineVersion: "8.0.33", 
-  instanceClass: "db.t3.micro",
+  instanceClass: rdsInstanceType,
   parameterGroupName: rdsParameterGroup.name,
-  username: "root",
-  password: "Thenothing1!", 
+  username: dbUsername,
+  password: dbPassword, 
   skipFinalSnapshot: true,
   vpcSecurityGroupIds:[dbSecurityGroup.id],
-  dbSubnetGroupName:privateSubnetGroup.name
+  dbSubnetGroupName:privateSubnetGroup.name  
 });
 
 const db_address = rdsInstance.address;
