@@ -10,7 +10,7 @@ config:
   aws-vpc:publicSubnetAssociation: PublicSubnetAssociation-demo
   aws-vpc:vpcCidrBlock: 10.1.0.0/16
   aws-vpc:vpcName: MyVPC-demo
-  aws-vpc:keyPair: predator
+  aws-vpc:keyPair: mba-demo
   aws-vpc:instanceType: t2.micro
   aws-vpc:volumeSize: 25
   aws-vpc:volumeType: gp2
@@ -18,7 +18,8 @@ config:
   aws-vpc:users: 311572683597
   aws-vpc:myIp: 73.142.182.118
   aws-vpc:noSubnets: 6
-
-
-
-
+  aws-vpc:dbName: cloud
+  aws-vpc:dbPassword: Thenothing1!
+  aws-vpc:dbPort: 3306
+  aws-vpc:dbUsername: root
+  aws-vpc:rdsInstanceType: db.t3.micro

@@ -24,6 +24,12 @@ const users = config.require("users");
 const myIp = config.require("myIp");
 const noSubnets = config.requireNumber("noSubnets");
 const publicSubnets:aws.ec2.Subnet[] = []; 
+const privateSubnets:aws.ec2.Subnet[] = []; 
+const dbName = config.require('dbName');
+const dbPassword = config.require("dbPassword");
+const dbPort = config.require('dbPort');
+const dbUsername = config.require('dbUsername');
+const rdsInstanceType = config.require('rdsInstanceType');
 
 
 const vpcCidrBlock = baseVpcCidrBlock;
@@ -146,7 +152,13 @@ aws.getAvailabilityZones({ state: "available" }).then((availabilityZones) => {
         subnetId: privateSubnet.id,
         routeTableId: privateRouteTable.id,
     });
+    privateSubnets.push(privateSubnet);
   });
+
+  const privateSubnetGroup = new aws.rds.SubnetGroup("my-rds-private-subnet-group", {
+    subnetIds: privateSubnets.map(subnet => subnet.id),
+  });
+
 
   
 
@@ -179,6 +191,14 @@ const ec2SecurityGroup = new aws.ec2.SecurityGroup("applicationSecurityGroup", {
         cidrBlocks:[allIp]
       }
   ],
+  egress:[
+    {
+      protocol: "-1",
+      fromPort: 0,
+      toPort:0,
+      cidrBlocks:[allIp]
+    }
+  ]
 });
 
 const ec2Ami = aws.ec2.getAmi({
@@ -192,24 +212,95 @@ filters:[
 ]
 })
 
-const ec2Instance = new aws.ec2.Instance("ec2",{
-ami:ec2Ami.then(ec2Ami=>ec2Ami.id),
-subnetId:publicSubnets[0].id,
-vpcSecurityGroupIds:[ec2SecurityGroup.id],
-instanceType:instanceType,
-keyName: keyPairName,
-disableApiTermination: false,
-tags:{
-  Name:"MyEc2"
-},
-rootBlockDevice:{
-  deleteOnTermination:true,
-  volumeSize:volumeSize,
-  volumeType:volumeType
-},
 
+
+// const 
+
+
+const dbSecurityGroup = new aws.ec2.SecurityGroup("databaseSecurityGroup", {
+  description: "My EC2 Instance Security Group",
+  vpcId:vpc.id,
+  tags:
+  {
+    Name:'databaseSecurityGroup'
+  }
+});
+
+const ingressRule = new aws.ec2.SecurityGroupRule("database-ingress-rule", {
+  type: "ingress",
+  fromPort: 3306, 
+  toPort: 3306, 
+  protocol: "tcp",
+  sourceSecurityGroupId: ec2SecurityGroup.id, 
+  securityGroupId: dbSecurityGroup.id,
+});
+
+
+const rdsParameterGroup = new aws.rds.ParameterGroup("my-rds-parameter-group", {
+  family: "mysql8.0", 
+  description: "My RDS Parameter Group", 
 
 });
+
+let vpcIdVariable =''; // Declare a variable to store the VPC ID
+
+
+vpc.id.apply(id=>{
+  vpcIdVariable=id
+});
+
+
+const rdsInstance = new aws.rds.Instance("my-rds", {
+  allocatedStorage: 20,
+  dbName: dbName,
+  engine: "mysql",
+  engineVersion: "8.0.33", 
+  instanceClass: rdsInstanceType,
+  parameterGroupName: rdsParameterGroup.name,
+  username: dbUsername,
+  password: dbPassword, 
+  skipFinalSnapshot: true,
+  vpcSecurityGroupIds:[dbSecurityGroup.id],
+  dbSubnetGroupName:privateSubnetGroup.name  
+});
+
+const db_address = rdsInstance.address;
+
+module.exports ={
+db_address
+}
+
+
+
+const ec2Instance = new aws.ec2.Instance("ec2",{
+  ami:ec2Ami.then(ec2Ami=>ec2Ami.id),
+  subnetId:publicSubnets[0].id,
+  vpcSecurityGroupIds:[ec2SecurityGroup.id],
+  instanceType:instanceType,
+  keyName: keyPairName,
+  disableApiTermination: false,
+  userData:pulumi.interpolate`#!/bin/bash
+  cat << EOF > /opt/web-app/.env
+  DB_HOST= ${rdsInstance.address}
+  DB_PORT=${rdsInstance.port}
+  DB_DATABASE=${rdsInstance.dbName}
+  DB_USERNAME=${rdsInstance.username}
+  DB_PASSWORD=${rdsInstance.password}
+  FILE_PATH=./opt/users.csv
+  EOF
+  `,
+  tags:{
+    Name:"MyEc2"
+  },
+  rootBlockDevice:{
+    deleteOnTermination:true,
+    volumeSize:volumeSize,
+    volumeType:volumeType
+  },
+  },{
+    dependsOn:[rdsInstance]
+  });
+
 });
 
 export const vpcId = vpc.id;
