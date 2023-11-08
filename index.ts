@@ -30,7 +30,10 @@ const dbPassword = config.require("dbPassword");
 const dbPort = config.require('dbPort');
 const dbUsername = config.require('dbUsername');
 const rdsInstanceType = config.require('rdsInstanceType');
+const policyArn = config.require('policyArn');
+const zoneName = config.require('zoneName');
 
+// let zones:aws.route53.RecordArgs;
 
 const vpcCidrBlock = baseVpcCidrBlock;
 const subnetMask = '255.255.240.0';
@@ -270,6 +273,29 @@ module.exports ={
 db_address
 }
 
+const role = new aws.iam.Role("myRole", {
+  assumeRolePolicy: JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [{
+          Effect: "Allow",
+          Principal: {
+              Service: "ec2.amazonaws.com"
+          },
+          Action: "sts:AssumeRole",
+      }],
+  }),
+});
+
+// Attach an AWS managed policy to the role
+const rolePolicyAttachment = new aws.iam.RolePolicyAttachment("myRolePolicyAttachment", {
+  role: role,
+  policyArn: policyArn,
+});
+
+const instanceProfile = new aws.iam.InstanceProfile("myInstanceProfile", {
+  role: role.name,
+});
+
 
 
 const ec2Instance = new aws.ec2.Instance("ec2",{
@@ -279,7 +305,12 @@ const ec2Instance = new aws.ec2.Instance("ec2",{
   instanceType:instanceType,
   keyName: keyPairName,
   disableApiTermination: false,
+  iamInstanceProfile:instanceProfile,
   userData:pulumi.interpolate`#!/bin/bash
+  sudo systemctl stop web-app
+  sudo systemctl start web-app
+  sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+  /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a start
   cat << EOF > /opt/web-app/.env
   DB_HOST= ${rdsInstance.address}
   DB_PORT=${rdsInstance.port}
@@ -298,9 +329,25 @@ const ec2Instance = new aws.ec2.Instance("ec2",{
     volumeType:volumeType
   },
   },{
-    dependsOn:[rdsInstance]
+    dependsOn:[rdsInstance,rolePolicyAttachment,instanceProfile]
   });
 
+
+    const zones =  aws.route53.getZone({ name: zoneName }); // Replace "example.com" with your domain name or use listHostedZones() to get all zones.
+
+
+const zoneId = zones.then( zone =>{
+  const zoneId = zone.id
+return zoneId})
+
+
+const aRecord = new aws.route53.Record("ec2Record",{
+  zoneId:zoneId,
+  name:zoneName,
+  type:"A",
+  ttl:60,
+  records:[ec2Instance.publicIp]
+})
 });
 
 export const vpcId = vpc.id;
