@@ -307,6 +307,10 @@ const ec2Instance = new aws.ec2.Instance("ec2",{
   disableApiTermination: false,
   iamInstanceProfile:instanceProfile,
   userData:pulumi.interpolate`#!/bin/bash
+  sudo systemctl stop web-app
+  sudo systemctl start web-app
+  sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+  /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a start
   cat << EOF > /opt/web-app/.env
   DB_HOST= ${rdsInstance.address}
   DB_PORT=${rdsInstance.port}
@@ -315,10 +319,6 @@ const ec2Instance = new aws.ec2.Instance("ec2",{
   DB_PASSWORD=${rdsInstance.password}
   FILE_PATH=./opt/users.csv
   EOF
-
-  sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
-  /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a start
-
   `,
   tags:{
     Name:"MyEc2"
