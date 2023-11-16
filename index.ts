@@ -2,6 +2,7 @@ import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 import * as awsx from "@pulumi/awsx";
 import * as subnetCalculator from 'ip-subnet-calculator';
+import { Ipv4 } from "@pulumi/aws/alb";
 const config = new pulumi.Config();
 
 
@@ -164,46 +165,6 @@ aws.getAvailabilityZones({ state: "available" }).then((availabilityZones) => {
 
 
   
-
-const ec2SecurityGroup = new aws.ec2.SecurityGroup("applicationSecurityGroup", {
-  description: "My EC2 Instance Security Group",
-  vpcId:vpc.id,
-  ingress: [
-      {
-          protocol: "tcp",
-          fromPort: 22, 
-          toPort: 22,
-          cidrBlocks: [myIpAddress + "/32"],  
-      },
-      {
-          protocol: "tcp",
-          fromPort: 80,  
-          toPort: 80,
-          cidrBlocks: [allIp],  
-      },
-      {
-          protocol: "tcp",
-          fromPort: 443,  
-          toPort: 443,
-          cidrBlocks: [allIp], 
-      },
-      {
-        protocol: "tcp",
-        fromPort: 8080,
-        toPort : 8080,
-        cidrBlocks:[allIp]
-      }
-  ],
-  egress:[
-    {
-      protocol: "-1",
-      fromPort: 0,
-      toPort:0,
-      cidrBlocks:[allIp]
-    }
-  ]
-});
-
 const ec2Ami = aws.ec2.getAmi({
 executableUsers:[users],
 mostRecent:true,
@@ -213,7 +174,7 @@ filters:[
     values:["my-ami_*"],
   }
 ]
-})
+});
 
 
 
@@ -229,14 +190,6 @@ const dbSecurityGroup = new aws.ec2.SecurityGroup("databaseSecurityGroup", {
   }
 });
 
-const ingressRule = new aws.ec2.SecurityGroupRule("database-ingress-rule", {
-  type: "ingress",
-  fromPort: 3306, 
-  toPort: 3306, 
-  protocol: "tcp",
-  sourceSecurityGroupId: ec2SecurityGroup.id, 
-  securityGroupId: dbSecurityGroup.id,
-});
 
 
 const rdsParameterGroup = new aws.rds.ParameterGroup("my-rds-parameter-group", {
@@ -273,6 +226,85 @@ module.exports ={
 db_address
 }
 
+const lbSecurityGroup = new aws.ec2.SecurityGroup("loadBalancerSecurityGroup",{
+  vpcId:vpc.id,
+  tags:{
+    Name:'loadBalancerSecurityGroup'
+  },
+  ingress:[
+    {
+      protocol:'tcp',
+      fromPort:80,
+      toPort:80,
+      cidrBlocks:[allIp]
+    },
+    {
+      protocol:'tcp',
+      fromPort:443,
+      toPort:443,
+      cidrBlocks:[allIp]
+    }
+  ],
+  egress: [{
+    fromPort: 0,
+    toPort: 0,
+    protocol: "-1",
+    cidrBlocks: ["0.0.0.0/0"],
+}],
+});
+
+
+const ec2SecurityGroup = new aws.ec2.SecurityGroup("applicationSecurityGroup", {
+  description: "My EC2 Instance Security Group",
+  vpcId:vpc.id,
+  ingress: [
+      {
+          protocol: "tcp",
+          fromPort: 22, 
+          toPort: 22,
+          cidrBlocks: [myIpAddress + "/32"],  
+      },
+      // {
+      //     protocol: "tcp",
+      //     fromPort: 80,  
+      //     toPort: 80,
+      //     cidrBlocks: [allIp],  
+      // },
+      // {
+      //     protocol: "tcp",
+      //     fromPort: 443,  
+      //     toPort: 443,
+      //     cidrBlocks: [allIp], 
+      // },
+      {
+        protocol: "tcp",
+        fromPort: 8080,
+        toPort : 8080,
+        // cidrBlocks:[allIp]
+        securityGroups:[lbSecurityGroup.id]
+      }
+  ],
+  egress:[
+    {
+      protocol: "-1",
+      fromPort: 0,
+      toPort:0,
+      cidrBlocks:[allIp]
+      // securityGroups:[dbSecurityGroup.id,lbSecurityGroup.id]
+    }
+  ]
+});
+
+const ingressRule = new aws.ec2.SecurityGroupRule("database-ingress-rule", {
+  type: "ingress",
+  fromPort: 3306, 
+  toPort: 3306, 
+  protocol: "tcp",
+  sourceSecurityGroupId: ec2SecurityGroup.id, 
+  securityGroupId: dbSecurityGroup.id,
+});
+
+
 const role = new aws.iam.Role("myRole", {
   assumeRolePolicy: JSON.stringify({
       Version: "2012-10-17",
@@ -296,44 +328,165 @@ const instanceProfile = new aws.iam.InstanceProfile("myInstanceProfile", {
   role: role.name,
 });
 
-
-
-const ec2Instance = new aws.ec2.Instance("ec2",{
-  ami:ec2Ami.then(ec2Ami=>ec2Ami.id),
-  subnetId:publicSubnets[0].id,
-  vpcSecurityGroupIds:[ec2SecurityGroup.id],
-  instanceType:instanceType,
-  keyName: keyPairName,
-  disableApiTermination: false,
-  iamInstanceProfile:instanceProfile,
-  userData:pulumi.interpolate`#!/bin/bash
-  sudo systemctl stop web-app
-  sudo systemctl start web-app
-  sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
-  /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a start
-  cat << EOF > /opt/web-app/.env
-  DB_HOST= ${rdsInstance.address}
-  DB_PORT=${rdsInstance.port}
-  DB_DATABASE=${rdsInstance.dbName}
-  DB_USERNAME=${rdsInstance.username}
-  DB_PASSWORD=${rdsInstance.password}
-  FILE_PATH=./opt/users.csv
-  EOF
-  `,
-  tags:{
-    Name:"MyEc2"
-  },
-  rootBlockDevice:{
-    deleteOnTermination:true,
-    volumeSize:volumeSize,
-    volumeType:volumeType
-  },
-  },{
-    dependsOn:[rdsInstance,rolePolicyAttachment,instanceProfile]
+  const targetGroup = new aws.alb.TargetGroup("targetGroup",{
+    port:8080,
+    protocol:'HTTP',
+    vpcId:vpc.id,
+    targetType:'instance',
+    healthCheck:{
+      enabled:true,
+      path:'/healthz',
+      protocol:'HTTP',
+      port:'8080',
+      timeout:10,
+      healthyThreshold:2,
+      unhealthyThreshold:2,
+      matcher:"200",
+      interval:15
+      
+    },
+    deregistrationDelay:500
   });
 
 
-    const zones =  aws.route53.getZone({ name: zoneName }); // Replace "example.com" with your domain name or use listHostedZones() to get all zones.
+const combinedOutputs = pulumi.all([rdsInstance.address, rdsInstance.port, rdsInstance.dbName, rdsInstance.username, rdsInstance.password]);
+
+const userData = combinedOutputs.apply(([address, port, dbName, username, password]) => {
+    // Construct the user data script with actual values
+    const script = `#!/bin/bash
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a start
+sudo systemctl daemon-reload
+sudo systemctl start web-app
+cat << EOF > /opt/web-app/.env
+DB_HOST=${address}
+DB_PORT=${port}
+DB_DATABASE=${dbName}
+DB_USERNAME=${username}
+DB_PASSWORD=${password}
+FILE_PATH=./opt/users.csv
+EOF
+`;
+    // Return the Base64 encoded script
+    return Buffer.from(script).toString('base64');
+});
+// console.log(ec2Ami.);
+const launchTemplate = new aws.ec2.LaunchTemplate("ec2Template",{
+  instanceType:instanceType,
+  imageId:ec2Ami.then(ami=>ami.id),
+  blockDeviceMappings:[
+    {
+      deviceName:'/dev/xvda',
+      ebs:{
+        
+        deleteOnTermination:'true',
+        volumeSize:volumeSize,
+        volumeType:volumeType
+      }
+    }
+  ],
+  iamInstanceProfile:{
+    arn:instanceProfile.arn
+  },
+  tags:{
+    key:"Name",
+    value:"MyEc2"
+  },
+  keyName:keyPairName,
+  vpcSecurityGroupIds:[ec2SecurityGroup.id],
+  disableApiTermination:false,
+  userData:userData,
+},
+{
+  dependsOn:[rdsInstance,rolePolicyAttachment,instanceProfile]
+});
+
+const autoScalingGroup = new aws.autoscaling.Group("autoScalingGroup",{
+  // availabilityZones: [],
+  vpcZoneIdentifiers:publicSubnets.map(subnet=>subnet.id),
+  desiredCapacity:1,
+  maxSize:3,
+  minSize:1,
+  healthCheckGracePeriod:100,
+  targetGroupArns:[targetGroup.arn],
+  launchTemplate:{
+    id:launchTemplate.id
+  },
+  tags:[
+    {
+      key:'Name',
+      value:'myEc2',
+      propagateAtLaunch:true
+    }
+  ],
+  healthCheckType:'EC2'
+});
+
+const cpuHighScalingPolicy = new aws.autoscaling.Policy("cpuHigh", {
+  autoscalingGroupName: autoScalingGroup.name,
+  adjustmentType: "ChangeInCapacity",
+  scalingAdjustment: 1,   
+  cooldown: 60,          
+  metricAggregationType: "Average"
+});
+
+const highCpuAlarm = new aws.cloudwatch.MetricAlarm("highCpuAlarm", {
+  name: "HighCPUUtilization",
+  comparisonOperator: "GreaterThanOrEqualToThreshold",
+  evaluationPeriods: 2,
+  metricName: "CPUUtilization",
+  namespace: "AWS/EC2",
+  period: 60,         
+  statistic: "Average",
+  threshold: 5,         
+  alarmActions: [cpuHighScalingPolicy.arn],
+  dimensions: {
+      AutoScalingGroupName: autoScalingGroup.name
+  }
+});
+
+const cpuLowScalingPolicy = new aws.autoscaling.Policy("cpuLow", {
+  autoscalingGroupName: autoScalingGroup.name,
+  adjustmentType: "ChangeInCapacity",
+  scalingAdjustment: -1,  
+  cooldown: 60,          
+  metricAggregationType: "Average"
+});
+
+const lowCpuAlarm = new aws.cloudwatch.MetricAlarm("lowCpuAlarm", {
+  name: "LowCPUUtilization",
+  comparisonOperator: "LessThanOrEqualToThreshold",
+  evaluationPeriods: 2,
+  metricName: "CPUUtilization",
+  namespace: "AWS/EC2",
+  period: 120,          
+  statistic: "Average",
+  threshold: 3,       
+  alarmActions: [cpuLowScalingPolicy.arn],
+  dimensions: {
+      AutoScalingGroupName: autoScalingGroup.name
+  }
+});
+
+const loadBalancer = new aws.alb.LoadBalancer("loadBalancer",{
+  internal:false,
+  loadBalancerType:"application",
+  securityGroups:[lbSecurityGroup.id],
+  subnets:publicSubnets.map(subnet=>subnet.id),
+  enableDeletionProtection:false,
+  ipAddressType:Ipv4
+  });
+
+  const listener = new aws.alb.Listener("listener",{
+    loadBalancerArn:loadBalancer.arn,
+    port:80,
+    defaultActions:[{
+      type:'forward',
+      targetGroupArn:targetGroup.arn
+    }]
+  });
+
+    const zones =  aws.route53.getZone({ name: zoneName }); 
 
 
 const zoneId = zones.then( zone =>{
@@ -345,8 +498,15 @@ const aRecord = new aws.route53.Record("ec2Record",{
   zoneId:zoneId,
   name:zoneName,
   type:"A",
-  ttl:60,
-  records:[ec2Instance.publicIp]
+  // ttl:60,
+  // records:[ec2Instance.publicIp]
+  aliases:[
+    {
+      name:loadBalancer.dnsName,
+      zoneId:loadBalancer.zoneId,
+      evaluateTargetHealth:true
+    }
+  ]
 })
 });
 
