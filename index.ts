@@ -510,5 +510,26 @@ const aRecord = new aws.route53.Record("ec2Record",{
 })
 });
 
+const snsTopic = new aws.sns.Topic("snsTopic", {deliveryPolicy: `{
+  "http": {
+    "defaultHealthyRetryPolicy": {
+      "minDelayTarget": 20,
+      "maxDelayTarget": 20,
+      "numRetries": 3,
+      "numMaxDelayRetries": 0,
+      "numNoDelayRetries": 0,
+      "numMinDelayRetries": 0,
+      "backoffFunction": "linear"
+    },
+    "disableSubscriptionOverrides": false,
+    "defaultThrottlePolicy": {
+      "maxReceivesPerSecond": 1
+    }
+  }
+}
+`});
+
+console.log(snsTopic.arn);
+
 export const vpcId = vpc.id;
 export const gateWayId = internetGateway.id;
