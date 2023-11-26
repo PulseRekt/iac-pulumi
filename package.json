@@ -1,0 +1,19 @@
+{
+    "name": "aws-vpc",
+    "main": "index.ts",
+    "devDependencies": {
+        "@types/node": "^16"
+    },
+    "dependencies": {
+        "@pulumi/archive": "^0.0.2",
+        "@pulumi/aws": "^5.0.0",
+        "@pulumi/awsx": "^1.0.0",
+        "@pulumi/gcp": "^7.2.1",
+        "@pulumi/pulumi": "^3.0.0",
+        "@types/archiver": "^6.0.2",
+        "@types/ip-subnet-calculator": "^1.1.1",
+        "archiver": "^6.0.1",
+        "ip-subnet-calculator": "^1.1.8",
+        "subnet-cidr-calculator": "^1.0.12"
+    }
+}
