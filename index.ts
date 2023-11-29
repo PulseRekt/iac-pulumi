@@ -41,9 +41,9 @@ const zoneName = config.require('zoneName');
 const sourceDir = '/Users/barathisridhar/Documents/GitHub/serverless/';
 const outputFilePath = 'lambda_function_payload.zip';
 const snsArn = config.require('snsArn');
-// const gcpProject = config.require('gcp:project');
+const gcpProject = config.require('gcpProject');
+const gcpServiceEmail = config.require('gcpServiceEmail')
 
-// let zones:aws.route53.RecordArgs;
 
 const vpcCidrBlock = baseVpcCidrBlock;
 const subnetMask = '255.255.240.0';
@@ -258,7 +258,7 @@ const lbSecurityGroup = new aws.ec2.SecurityGroup("loadBalancerSecurityGroup",{
     fromPort: 0,
     toPort: 0,
     protocol: "-1",
-    cidrBlocks: ["0.0.0.0/0"],
+    cidrBlocks: [allIp],
 }],
 });
 
@@ -273,23 +273,10 @@ const ec2SecurityGroup = new aws.ec2.SecurityGroup("applicationSecurityGroup", {
           toPort: 22,
           cidrBlocks: [myIpAddress + "/32"],  
       },
-      // {
-      //     protocol: "tcp",
-      //     fromPort: 80,  
-      //     toPort: 80,
-      //     cidrBlocks: [allIp],  
-      // },
-      // {
-      //     protocol: "tcp",
-      //     fromPort: 443,  
-      //     toPort: 443,
-      //     cidrBlocks: [allIp], 
-      // },
       {
         protocol: "tcp",
         fromPort: 8080,
         toPort : 8080,
-        // cidrBlocks:[allIp]
         securityGroups:[lbSecurityGroup.id]
       }
   ],
@@ -299,7 +286,6 @@ const ec2SecurityGroup = new aws.ec2.SecurityGroup("applicationSecurityGroup", {
       fromPort: 0,
       toPort:0,
       cidrBlocks:[allIp]
-      // securityGroups:[dbSecurityGroup.id,lbSecurityGroup.id]
     }
   ]
 });
@@ -328,6 +314,7 @@ const role = new aws.iam.Role("myRole", {
 });
 
 
+
 const rolePolicyAttachment = new aws.iam.RolePolicyAttachment("myRolePolicyAttachment", {
   role: role,
   policyArn: policyArn,
@@ -335,7 +322,7 @@ const rolePolicyAttachment = new aws.iam.RolePolicyAttachment("myRolePolicyAttac
 
 const snsPolicy = new aws.iam.RolePolicyAttachment("snsPublishRolePolicyAttachment", {
   role: role,
-  policyArn:snsArn
+  policyArn:snsPublishPolicy.arn
 });
 
 const instanceProfile = new aws.iam.InstanceProfile("myInstanceProfile", {
@@ -382,10 +369,8 @@ SNS_ARN=${sns_arn}
 FILE_PATH=./opt/users.csv
 EOF
 `;
-    // Return the Base64 encoded script
     return Buffer.from(script).toString('base64');
 });
-// console.log(ec2Ami.);
 const launchTemplate = new aws.ec2.LaunchTemplate("ec2Template",{
   instanceType:instanceType,
   imageId:ec2Ami.then(ami=>ami.id),
@@ -417,7 +402,6 @@ const launchTemplate = new aws.ec2.LaunchTemplate("ec2Template",{
 });
 
 const autoScalingGroup = new aws.autoscaling.Group("autoScalingGroup",{
-  // availabilityZones: [],
   vpcZoneIdentifiers:publicSubnets.map(subnet=>subnet.id),
   desiredCapacity:1,
   maxSize:3,
@@ -501,7 +485,7 @@ const loadBalancer = new aws.alb.LoadBalancer("loadBalancer",{
     }]
   });
 
-    const zones =  aws.route53.getZone({ name: zoneName }); 
+  const zones =  aws.route53.getZone({ name: zoneName }); 
 
 
 const zoneId = zones.then( zone =>{
@@ -513,8 +497,7 @@ const aRecord = new aws.route53.Record("ec2Record",{
   zoneId:zoneId,
   name:zoneName,
   type:"A",
-  // ttl:60,
-  // records:[ec2Instance.publicIp]
+
   aliases:[
     {
       name:loadBalancer.dnsName,
@@ -544,6 +527,64 @@ const snsTopic = new aws.sns.Topic("snsTopic", {deliveryPolicy: `{
 }
 `});
 
+
+const sesPolicy = new aws.iam.Policy("sesPolicy", {
+  name: "SES_Policy",
+  description: "Policy for SES permissions",
+  policy: JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [{
+          Effect: "Allow",
+          Action: [
+              "ses:SendEmail",
+              "ses:SendRawEmail",
+              "ses:SendTemplatedEmail",
+              "ses:SendBulkTemplatedEmail",
+              "ses:SendCustomVerificationEmail",
+              "ses:SendEmailVerification",
+              "ses:SendRawEmail",
+              "ses:SendTemplatedEmail",
+              "ses:VerifyEmailIdentity",
+              "ses:VerifyEmailAddress",
+          ],
+          Resource: "*",
+      },
+  ],
+}),
+});
+
+
+const dynampolicy = new aws.iam.Policy("dynampolicy", {
+  name: "dynampolicy",
+  description: "Policy for Dynamodb permissions",
+  policy: JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [{
+          Effect: "Allow",
+          Action: [
+              "dynamodb:PutItem",
+              "dynamodb:GetItem",
+              "dynamodb:UpdateItem",
+              "dynamodb:BatchWriteItem",
+          ],
+          Resource: "*",
+      },
+  ],
+}),
+});
+
+const snsPublishPolicy = new aws.iam.Policy("snsPublishPolicy", {
+  description: "Allow publishing to a specific SNS topic",
+  policy: pulumi.output({
+      Version: "2012-10-17",
+      Statement: [{
+          Effect: "Allow",
+          Action: "sns:Publish",
+          Resource: snsTopic.arn,
+      }],
+  }).apply(JSON.stringify),
+});
+
 const assumeRole = aws.iam.getPolicyDocument({
   statements: [{
       effect: "Allow",
@@ -565,16 +606,16 @@ const lambdaExecutionRolePolicyAttachment = new aws.iam.RolePolicyAttachment("la
 
 const lambdaSESPolicyAttachment = new aws.iam.RolePolicyAttachment("lambdaSESPolicyAttachment", {
   role: iamForLambda.name,
-  policyArn: "arn:aws:iam::aws:policy/AmazonSESFullAccess",
+  policyArn: sesPolicy.arn,
 });
 
 const dynamoDBPolicyAttachment = new aws.iam.RolePolicyAttachment("dynamoDBPolicyAttachment",{
   role:iamForLambda.name,
-  policyArn:"arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
+  policyArn:dynampolicy.arn
 })
 archiveDirectory(sourceDir);
 
-const serviceAccountEmail = "barathis1998";
+const serviceAccountEmail = gcpServiceEmail;
 
 const serviceAccount = new gcp.serviceaccount.Account("my-service-account", {
   accountId: serviceAccountEmail,
@@ -587,13 +628,14 @@ const accessKey = new gcp.serviceaccount.Key("accessKey",{
 
 const project = new gcp.projects.IAMBinding("project", {
   members: [pulumi.interpolate`serviceAccount:${serviceAccount.email}`],
-  project: "csye6225-demo-405801",
+  project:gcpProject,
   role: "roles/storage.objectCreator",
 });
 
 const gBucket = new gcp.storage.Bucket("myGBucket",{
   location:'us-east1',
-  name:'csye6225_barathisridhar'
+  name:'csye6225_barathisridhar',
+  forceDestroy:true
 });
 
 const emailTrackingTable = new aws.dynamodb.Table("EmailTracking", {
@@ -636,7 +678,7 @@ const myLambda = new aws.lambda.Function("testLambda", {
     variables:{
       gcpPrivateKey: accessKey.privateKey,
       bucketName: gBucket.name,
-      gcpProjectId: "csye6225-demo-405801",
+      gcpProjectId: gcpProject,
       gcpEmail: serviceAccount.email,
       dynamoTable:emailTrackingTable.name
     }
@@ -656,11 +698,6 @@ const lambdaSubcription = new aws.sns.TopicSubscription("lambdaSubcription",{
   protocol:'lambda',
   endpoint:myLambda.arn
 });
-
-
-
-
-
 
 
 export const vpcId = vpc.id;

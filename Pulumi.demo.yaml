@@ -28,3 +28,7 @@ config:
   aws:profile: demo
   aws:region: us-east-1
   gcp:project: csye6225-demo-405801
+  aws-vpc:gcpProject: csye6225-demo-405801
+  aws-vpc:gcpServiceEmail: barathis1998
+
+

@@ -27,3 +27,5 @@ config:
   aws-vpc:zoneName: dev.barathisridhar.me
   aws-vpc:snsArn: arn:aws:iam::aws:policy/AmazonSNSFullAccess
   gcp:project: csye6225-dev-405801
+  aws-vpc:gcpProject: csye6225-dev-405801
+  aws-vpc:gcpServiceEmail: barathis1998
