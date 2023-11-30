@@ -3,6 +3,11 @@ import * as aws from "@pulumi/aws";
 import * as awsx from "@pulumi/awsx";
 import * as subnetCalculator from 'ip-subnet-calculator';
 import { Ipv4 } from "@pulumi/aws/alb";
+import { Archive } from "@pulumi/pulumi/asset";
+import * as archive from "@pulumi/archive";
+import { archiveDirectory } from './archiver';
+import * as gcp from "@pulumi/gcp";
+
 const config = new pulumi.Config();
 
 
@@ -33,8 +38,12 @@ const dbUsername = config.require('dbUsername');
 const rdsInstanceType = config.require('rdsInstanceType');
 const policyArn = config.require('policyArn');
 const zoneName = config.require('zoneName');
+const sourceDir = '/Users/barathisridhar/Documents/GitHub/serverless/';
+const outputFilePath = 'lambda_function_payload.zip';
+const snsArn = config.require('snsArn');
+const gcpProject = config.require('gcpProject');
+const gcpServiceEmail = config.require('gcpServiceEmail')
 
-// let zones:aws.route53.RecordArgs;
 
 const vpcCidrBlock = baseVpcCidrBlock;
 const subnetMask = '255.255.240.0';
@@ -249,7 +258,7 @@ const lbSecurityGroup = new aws.ec2.SecurityGroup("loadBalancerSecurityGroup",{
     fromPort: 0,
     toPort: 0,
     protocol: "-1",
-    cidrBlocks: ["0.0.0.0/0"],
+    cidrBlocks: [allIp],
 }],
 });
 
@@ -264,23 +273,10 @@ const ec2SecurityGroup = new aws.ec2.SecurityGroup("applicationSecurityGroup", {
           toPort: 22,
           cidrBlocks: [myIpAddress + "/32"],  
       },
-      // {
-      //     protocol: "tcp",
-      //     fromPort: 80,  
-      //     toPort: 80,
-      //     cidrBlocks: [allIp],  
-      // },
-      // {
-      //     protocol: "tcp",
-      //     fromPort: 443,  
-      //     toPort: 443,
-      //     cidrBlocks: [allIp], 
-      // },
       {
         protocol: "tcp",
         fromPort: 8080,
         toPort : 8080,
-        // cidrBlocks:[allIp]
         securityGroups:[lbSecurityGroup.id]
       }
   ],
@@ -290,7 +286,6 @@ const ec2SecurityGroup = new aws.ec2.SecurityGroup("applicationSecurityGroup", {
       fromPort: 0,
       toPort:0,
       cidrBlocks:[allIp]
-      // securityGroups:[dbSecurityGroup.id,lbSecurityGroup.id]
     }
   ]
 });
@@ -318,10 +313,16 @@ const role = new aws.iam.Role("myRole", {
   }),
 });
 
-// Attach an AWS managed policy to the role
+
+
 const rolePolicyAttachment = new aws.iam.RolePolicyAttachment("myRolePolicyAttachment", {
   role: role,
   policyArn: policyArn,
+});
+
+const snsPolicy = new aws.iam.RolePolicyAttachment("snsPublishRolePolicyAttachment", {
+  role: role,
+  policyArn:snsPublishPolicy.arn
 });
 
 const instanceProfile = new aws.iam.InstanceProfile("myInstanceProfile", {
@@ -349,9 +350,9 @@ const instanceProfile = new aws.iam.InstanceProfile("myInstanceProfile", {
   });
 
 
-const combinedOutputs = pulumi.all([rdsInstance.address, rdsInstance.port, rdsInstance.dbName, rdsInstance.username, rdsInstance.password]);
+const combinedOutputs = pulumi.all([rdsInstance.address, rdsInstance.port, rdsInstance.dbName, rdsInstance.username, rdsInstance.password,snsTopic.arn]);
 
-const userData = combinedOutputs.apply(([address, port, dbName, username, password]) => {
+const userData = combinedOutputs.apply(([address, port, dbName, username, password,sns_arn]) => {
     // Construct the user data script with actual values
     const script = `#!/bin/bash
 sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
@@ -364,13 +365,12 @@ DB_PORT=${port}
 DB_DATABASE=${dbName}
 DB_USERNAME=${username}
 DB_PASSWORD=${password}
+SNS_ARN=${sns_arn}
 FILE_PATH=./opt/users.csv
 EOF
 `;
-    // Return the Base64 encoded script
     return Buffer.from(script).toString('base64');
 });
-// console.log(ec2Ami.);
 const launchTemplate = new aws.ec2.LaunchTemplate("ec2Template",{
   instanceType:instanceType,
   imageId:ec2Ami.then(ami=>ami.id),
@@ -398,11 +398,10 @@ const launchTemplate = new aws.ec2.LaunchTemplate("ec2Template",{
   userData:userData,
 },
 {
-  dependsOn:[rdsInstance,rolePolicyAttachment,instanceProfile]
+  dependsOn:[rdsInstance,rolePolicyAttachment,instanceProfile,snsTopic]
 });
 
 const autoScalingGroup = new aws.autoscaling.Group("autoScalingGroup",{
-  // availabilityZones: [],
   vpcZoneIdentifiers:publicSubnets.map(subnet=>subnet.id),
   desiredCapacity:1,
   maxSize:3,
@@ -486,7 +485,7 @@ const loadBalancer = new aws.alb.LoadBalancer("loadBalancer",{
     }]
   });
 
-    const zones =  aws.route53.getZone({ name: zoneName }); 
+  const zones =  aws.route53.getZone({ name: zoneName }); 
 
 
 const zoneId = zones.then( zone =>{
@@ -498,8 +497,7 @@ const aRecord = new aws.route53.Record("ec2Record",{
   zoneId:zoneId,
   name:zoneName,
   type:"A",
-  // ttl:60,
-  // records:[ec2Instance.publicIp]
+
   aliases:[
     {
       name:loadBalancer.dnsName,
@@ -509,6 +507,198 @@ const aRecord = new aws.route53.Record("ec2Record",{
   ]
 })
 });
+
+const snsTopic = new aws.sns.Topic("snsTopic", {deliveryPolicy: `{
+  "http": {
+    "defaultHealthyRetryPolicy": {
+      "minDelayTarget": 20,
+      "maxDelayTarget": 20,
+      "numRetries": 3,
+      "numMaxDelayRetries": 0,
+      "numNoDelayRetries": 0,
+      "numMinDelayRetries": 0,
+      "backoffFunction": "linear"
+    },
+    "disableSubscriptionOverrides": false,
+    "defaultThrottlePolicy": {
+      "maxReceivesPerSecond": 1
+    }
+  }
+}
+`});
+
+
+const sesPolicy = new aws.iam.Policy("sesPolicy", {
+  name: "SES_Policy",
+  description: "Policy for SES permissions",
+  policy: JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [{
+          Effect: "Allow",
+          Action: [
+              "ses:SendEmail",
+              "ses:SendRawEmail",
+              "ses:SendTemplatedEmail",
+              "ses:SendBulkTemplatedEmail",
+              "ses:SendCustomVerificationEmail",
+              "ses:SendEmailVerification",
+              "ses:SendRawEmail",
+              "ses:SendTemplatedEmail",
+              "ses:VerifyEmailIdentity",
+              "ses:VerifyEmailAddress",
+          ],
+          Resource: "*",
+      },
+  ],
+}),
+});
+
+
+const dynampolicy = new aws.iam.Policy("dynampolicy", {
+  name: "dynampolicy",
+  description: "Policy for Dynamodb permissions",
+  policy: JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [{
+          Effect: "Allow",
+          Action: [
+              "dynamodb:PutItem",
+              "dynamodb:GetItem",
+              "dynamodb:UpdateItem",
+              "dynamodb:BatchWriteItem",
+          ],
+          Resource: "*",
+      },
+  ],
+}),
+});
+
+const snsPublishPolicy = new aws.iam.Policy("snsPublishPolicy", {
+  description: "Allow publishing to a specific SNS topic",
+  policy: pulumi.output({
+      Version: "2012-10-17",
+      Statement: [{
+          Effect: "Allow",
+          Action: "sns:Publish",
+          Resource: snsTopic.arn,
+      }],
+  }).apply(JSON.stringify),
+});
+
+const assumeRole = aws.iam.getPolicyDocument({
+  statements: [{
+      effect: "Allow",
+      principals: [{
+          type: "Service",
+          identifiers: ["lambda.amazonaws.com"],
+      }],
+      actions: ["sts:AssumeRole"],
+  }],
+});
+const iamForLambda = new aws.iam.Role("iamForLambda", {assumeRolePolicy: assumeRole.then(assumeRole => assumeRole.json)});
+
+
+
+const lambdaExecutionRolePolicyAttachment = new aws.iam.RolePolicyAttachment("lambdaExecutionRolePolicyAttachment", {
+  role: iamForLambda.name,
+  policyArn: "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+});
+
+const lambdaSESPolicyAttachment = new aws.iam.RolePolicyAttachment("lambdaSESPolicyAttachment", {
+  role: iamForLambda.name,
+  policyArn: sesPolicy.arn,
+});
+
+const dynamoDBPolicyAttachment = new aws.iam.RolePolicyAttachment("dynamoDBPolicyAttachment",{
+  role:iamForLambda.name,
+  policyArn:dynampolicy.arn
+})
+archiveDirectory(sourceDir);
+
+const serviceAccountEmail = gcpServiceEmail;
+
+const serviceAccount = new gcp.serviceaccount.Account("my-service-account", {
+  accountId: serviceAccountEmail,
+  displayName: "My Service Account",
+});
+
+const accessKey = new gcp.serviceaccount.Key("accessKey",{
+  serviceAccountId:serviceAccount.accountId
+})
+
+const project = new gcp.projects.IAMBinding("project", {
+  members: [pulumi.interpolate`serviceAccount:${serviceAccount.email}`],
+  project:gcpProject,
+  role: "roles/storage.objectCreator",
+});
+
+const gBucket = new gcp.storage.Bucket("myGBucket",{
+  location:'us-east1',
+  name:'csye6225_barathisridhar',
+  forceDestroy:true
+});
+
+const emailTrackingTable = new aws.dynamodb.Table("EmailTracking", {
+  attributes: [
+      { name: "EmailId", type: "S" }, 
+      { name: "Recipient", type: "S" },
+      { name: "Timestamp", type: "S" },
+      { name: "Status", type: "S" },
+  ],
+  billingMode: "PAY_PER_REQUEST", 
+  hashKey: "EmailId", 
+  globalSecondaryIndexes: [
+      {
+          name: "RecipientIndex",
+          hashKey: "Recipient",
+          projectionType: "ALL",
+      },
+      {
+          name: "TimestampIndex",
+          hashKey: "Timestamp",
+          projectionType: "ALL",
+      },
+      {
+          name: "StatusIndex",
+          hashKey: "Status",
+          projectionType: "ALL",
+      },
+  ],
+});
+
+
+const myLambda = new aws.lambda.Function("testLambda", {
+  code: new pulumi.asset.AssetArchive({
+    ".": new pulumi.asset.FileArchive(sourceDir),
+}),
+  role: iamForLambda.arn,
+  handler: "index.handler",
+  runtime: "nodejs18.x",
+  environment:{
+    variables:{
+      gcpPrivateKey: accessKey.privateKey,
+      bucketName: gBucket.name,
+      gcpProjectId: gcpProject,
+      gcpEmail: serviceAccount.email,
+      dynamoTable:emailTrackingTable.name
+    }
+  }
+});
+
+
+const lambdaPermission = new aws.lambda.Permission("function-with-sns", {
+  action: "lambda:InvokeFunction",
+  function: myLambda.name,
+  principal: "sns.amazonaws.com",
+  sourceArn: snsTopic.arn,
+});
+
+const lambdaSubcription = new aws.sns.TopicSubscription("lambdaSubcription",{
+  topic:snsTopic.arn,
+  protocol:'lambda',
+  endpoint:myLambda.arn
+});
+
 
 export const vpcId = vpc.id;
 export const gateWayId = internetGateway.id;

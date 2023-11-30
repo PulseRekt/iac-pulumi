@@ -1,27 +1,34 @@
 config:
-  aws:profile: demo
-  aws:region: us-east-1
+  aws-vpc:allIp: 0.0.0.0/0
+  aws-vpc:dbName: cloud
+  aws-vpc:dbPassword: Thenothing1!
+  aws-vpc:dbPort: "3306"
+  aws-vpc:dbUsername: root
   aws-vpc:igwName: MyIGW-demo
+  aws-vpc:instanceType: t2.micro
+  aws-vpc:keyPair: mba-demo
+  aws-vpc:myIp: 73.142.182.118
+  aws-vpc:noSubnets: "6"
+  aws-vpc:policyArn: arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
   aws-vpc:privateRouteTable: PrivateRouteTable-demo-
   aws-vpc:privateSubnet: PrivateSubnet-demo-
   aws-vpc:privateSubnetAssociation: PrivateSubnetAssociation-demo
+  aws-vpc:project: csye6225-demo-405801
   aws-vpc:publicRouteTable: PublicRouteTable-demo-
   aws-vpc:publicSubnet: PublicSubnet-demo-
   aws-vpc:publicSubnetAssociation: PublicSubnetAssociation-demo
+  aws-vpc:rdsInstanceType: db.t3.micro
+  aws-vpc:snsArn: arn:aws:iam::aws:policy/AmazonSNSFullAccess
+  aws-vpc:users: "311572683597"
+  aws-vpc:volumeSize: "25"
+  aws-vpc:volumeType: gp2
   aws-vpc:vpcCidrBlock: 10.1.0.0/16
   aws-vpc:vpcName: MyVPC-demo
-  aws-vpc:keyPair: mba-demo
-  aws-vpc:instanceType: t2.micro
-  aws-vpc:volumeSize: 25
-  aws-vpc:volumeType: gp2
-  aws-vpc:allIp: 0.0.0.0/0
-  aws-vpc:users: 311572683597
-  aws-vpc:myIp: 73.142.182.118
-  aws-vpc:noSubnets: 6
-  aws-vpc:dbName: cloud
-  aws-vpc:dbPassword: Thenothing1!
-  aws-vpc:dbPort: 3306
-  aws-vpc:dbUsername: root
-  aws-vpc:rdsInstanceType: db.t3.micro
-  aws-vpc:policyArn: arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
   aws-vpc:zoneName: demo.barathisridhar.me
+  aws:profile: demo
+  aws:region: us-east-1
+  gcp:project: csye6225-demo-405801
+  aws-vpc:gcpProject: csye6225-demo-405801
+  aws-vpc:gcpServiceEmail: barathis1998
+
+
