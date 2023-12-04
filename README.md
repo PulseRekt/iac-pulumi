@@ -53,3 +53,29 @@ This guide will help you set up the AWS Command Line Interface (CLI) and Pulumi 
 - Deploy your Pulumi infrastructure with `pulumi up`. You will be prompted to enter the passphrase for Pulumi.
 
 - To destroy created resources or perform updates, use `pulumi destroy` or `pulumi up` as needed.
+
+
+# SSL Certificate Import and AWS ACM Configuration
+
+This guide covers the steps to generate a CSR in Namecheap, import an SSL certificate into AWS ACM using the AWS CLI, and configure it with a named profile.
+
+## Prerequisites
+
+- [AWS CLI](https://aws.amazon.com/cli/) installed.
+
+## Step 1: Generate CSR in Namecheap
+
+1. Log in to [Namecheap](https://www.namecheap.com/).
+2. Navigate to SSL Certificates.
+3. Purchase or manage a certificate.
+4. Generate a CSR and save it along with the private key.
+
+## Step 2: Import SSL Certificate into AWS ACM
+
+```bash
+aws acm import-certificate \
+  --certificate fileb:///path/to/certificate.crt \
+  --private-key fileb:///path/to/private-key.pem \
+  --certificate-chain fileb:///path/to/certificate-chain.pem \
+  --profile your_aws_cli_profile
+
