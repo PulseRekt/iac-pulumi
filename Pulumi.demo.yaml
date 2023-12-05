@@ -30,5 +30,7 @@ config:
   gcp:project: csye6225-demo-405801
   aws-vpc:gcpProject: csye6225-demo-405801
   aws-vpc:gcpServiceEmail: barathis1998
+  aws-vpc:certificateArn: arn:aws:acm:us-east-1:311572683597:certificate/ffcec882-da16-4ff4-ba06-facf63f85f7d
+
 
 

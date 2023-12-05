@@ -43,6 +43,7 @@ const outputFilePath = 'lambda_function_payload.zip';
 const snsArn = config.require('snsArn');
 const gcpProject = config.require('gcpProject');
 const gcpServiceEmail = config.require('gcpServiceEmail')
+const certificateArn = config.require('certificateArn');
 
 
 const vpcCidrBlock = baseVpcCidrBlock;
@@ -207,7 +208,7 @@ const rdsParameterGroup = new aws.rds.ParameterGroup("my-rds-parameter-group", {
 
 });
 
-let vpcIdVariable =''; // Declare a variable to store the VPC ID
+let vpcIdVariable =''; 
 
 
 vpc.id.apply(id=>{
@@ -241,12 +242,12 @@ const lbSecurityGroup = new aws.ec2.SecurityGroup("loadBalancerSecurityGroup",{
     Name:'loadBalancerSecurityGroup'
   },
   ingress:[
-    {
-      protocol:'tcp',
-      fromPort:80,
-      toPort:80,
-      cidrBlocks:[allIp]
-    },
+    // {
+    //   protocol:'tcp',
+    //   fromPort:80,
+    //   toPort:80,
+    //   cidrBlocks:[allIp]
+    // },
     {
       protocol:'tcp',
       fromPort:443,
@@ -478,11 +479,15 @@ const loadBalancer = new aws.alb.LoadBalancer("loadBalancer",{
 
   const listener = new aws.alb.Listener("listener",{
     loadBalancerArn:loadBalancer.arn,
-    port:80,
+    port:443,
+    protocol:'HTTPS',
     defaultActions:[{
       type:'forward',
       targetGroupArn:targetGroup.arn
-    }]
+    }],
+    sslPolicy: "ELBSecurityPolicy-2016-08",
+    certificateArn: certificateArn,
+
   });
 
   const zones =  aws.route53.getZone({ name: zoneName }); 
