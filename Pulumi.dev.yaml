@@ -30,4 +30,3 @@ config:
   aws-vpc:gcpProject: csye6225-dev-405801
   aws-vpc:gcpServiceEmail: barathis1998
   aws-vpc:certificateArn: arn:aws:acm:us-east-1:544295151960:certificate/d1eb2b74-9fdf-4833-8934-24cac6bb8d42
-
